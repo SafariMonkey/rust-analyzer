@@ -19,6 +19,7 @@ use crate::{
     build_data::{BuildData, BuildDataMap, BuildDataResult},
     cargo_workspace,
     cfg_flag::CfgFlag,
+    project_json::ProjectJsonData,
     rustc_cfg,
     sysroot::SysrootCrate,
     utf8_stdout, BuildDataCollector, CargoConfig, CargoWorkspace, ProjectJson, ProjectManifest,
@@ -96,6 +97,22 @@ impl ProjectWorkspace {
                     format!("Failed to deserialize json file {}", project_json.display())
                 })?;
                 let project_location = project_json.parent().unwrap().to_path_buf();
+                let project_json = ProjectJson::new(&project_location, data);
+                ProjectWorkspace::load_inline(project_json, config.target.as_deref())?
+            }
+            ProjectManifest::RustScript(script_file) => {
+                let file = fs::read_to_string(&script_file).with_context(|| {
+                    format!("Failed to read rust-script file {}", script_file.display())
+                })?;
+
+                fn parse_rust_script(script_file: &str) -> Result<ProjectJsonData> {
+                    unimplemented!()
+                }
+
+                let data = parse_rust_script(&file).with_context(|| {
+                    format!("Failed to parse .ers file {}", script_file.display())
+                })?;
+                let project_location = script_file.parent().unwrap().to_path_buf();
                 let project_json = ProjectJson::new(&project_location, data);
                 ProjectWorkspace::load_inline(project_json, config.target.as_deref())?
             }

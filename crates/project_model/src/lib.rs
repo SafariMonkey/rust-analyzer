@@ -9,8 +9,8 @@ mod rustc_cfg;
 mod build_data;
 
 use std::{
-    fs::{read_dir, ReadDir},
-    io,
+    fs::{read_dir, File, ReadDir},
+    io::{self, BufRead},
     process::Command,
 };
 
@@ -35,6 +35,7 @@ pub use proc_macro_api::ProcMacroClient;
 pub enum ProjectManifest {
     ProjectJson(AbsPathBuf),
     CargoToml(AbsPathBuf),
+    RustScript(AbsPathBuf),
 }
 
 impl ProjectManifest {
@@ -114,6 +115,25 @@ impl ProjectManifest {
             .collect::<Vec<_>>();
         res.sort();
         res
+    }
+
+    pub fn try_rust_script_from_file(file: AbsPathBuf) -> Option<ProjectManifest> {
+        if file.is_dir() {
+            return None;
+        }
+        let ext = file.extension().map(|ext| ext.to_str()).flatten();
+        if !matches!(ext, Some("ers") | Some("rs")) {
+            return None;
+        }
+        let first_line = {
+            let file = File::open(&file).ok()?;
+            io::BufReader::new(file).lines().next()?.ok()?
+        };
+        if first_line.starts_with("#!") && first_line.contains("rust-script") {
+            Some(ProjectManifest::RustScript(file))
+        } else {
+            None
+        }
     }
 }
 
