@@ -10,7 +10,7 @@ mod build_data;
 
 use std::{
     fs::{read_dir, File, ReadDir},
-    io::{self, BufRead},
+    io::{self, BufRead, Read},
     process::Command,
 };
 
@@ -117,22 +117,26 @@ impl ProjectManifest {
         res
     }
 
-    pub fn try_rust_script_from_file(file: AbsPathBuf) -> Option<ProjectManifest> {
-        if file.is_dir() {
+    pub fn try_rust_script_from_file(file_path: AbsPathBuf) -> Option<ProjectManifest> {
+        if file_path.is_dir() {
             return None;
         }
-        let ext = file.extension().map(|ext| ext.to_str()).flatten();
+        let ext = file_path.extension().map(|ext| ext.to_str()).flatten();
         if !matches!(ext, Some("ers") | Some("rs")) {
             return None;
         }
-        let first_line = {
-            let file = File::open(&file).ok()?;
-            io::BufReader::new(file).lines().next()?.ok()?
-        };
-        if first_line.starts_with("#!") && first_line.contains("rust-script") {
-            Some(ProjectManifest::RustScript(file))
-        } else {
-            None
+        // read the shebang first, then the rest of the line
+        let mut file = File::open(&file_path).ok()?;
+        let mut shebang = [0u8; 2];
+        file.read_exact(&mut shebang).ok()?;
+        match shebang {
+            [b'#', b'!'] => {
+                let first_line_minus_shebang = io::BufReader::new(file).lines().next()?.ok()?;
+                first_line_minus_shebang
+                    .contains("rust-script")
+                    .then(|| ProjectManifest::RustScript(file_path))
+            }
+            _ => None,
         }
     }
 }
