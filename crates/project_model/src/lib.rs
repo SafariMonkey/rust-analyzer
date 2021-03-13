@@ -126,11 +126,12 @@ impl ProjectManifest {
             return None;
         }
         // read the shebang first, then the rest of the line
+        // to avoid reading #![...] as a shebang, check next character too
         let mut file = File::open(&file_path).ok()?;
-        let mut shebang = [0u8; 2];
+        let mut shebang = [0u8; 3];
         file.read_exact(&mut shebang).ok()?;
         match shebang {
-            [b'#', b'!'] => {
+            [b'#', b'!', next] if next == b'/' || char::from(next).is_ascii_whitespace() => {
                 let first_line_minus_shebang = io::BufReader::new(file).lines().next()?.ok()?;
                 first_line_minus_shebang
                     .contains("rust-script")
