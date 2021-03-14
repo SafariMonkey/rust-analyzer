@@ -3,27 +3,28 @@
 //! database -- `CrateGraph`.
 
 use std::{
+    convert::TryFrom,
     fmt, fs,
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
     process::Command,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use base_db::{CrateDisplayName, CrateGraph, CrateId, CrateName, Edition, Env, FileId, ProcMacro};
 use cfg::CfgOptions;
 use paths::{AbsPath, AbsPathBuf};
 use proc_macro_api::ProcMacroClient;
 use rustc_hash::{FxHashMap, FxHashSet};
+use serde::{de, Deserialize};
 
 use crate::{
     build_data::{BuildData, BuildDataMap, BuildDataResult},
     cargo_workspace,
     cfg_flag::CfgFlag,
-    project_json::ProjectJsonData,
     rustc_cfg,
     sysroot::SysrootCrate,
     utf8_stdout, BuildDataCollector, CargoConfig, CargoWorkspace, ProjectJson, ProjectManifest,
-    Sysroot, TargetKind,
+    RustScriptMeta, Sysroot, TargetKind,
 };
 
 /// `PackageRoot` describes a package root folder.
@@ -50,6 +51,7 @@ pub enum ProjectWorkspace {
         /// FIXME: make this a per-crate map, as, eg, build.rs might have a
         /// different target.
         rustc_cfg: Vec<CfgFlag>,
+        rust_script_meta: Option<RustScriptMeta>,
     },
     /// Project workspace was manually specified using a `rust-project.json` file.
     Json { project: ProjectJson, sysroot: Option<Sysroot>, rustc_cfg: Vec<CfgFlag> },
@@ -59,7 +61,7 @@ impl fmt::Debug for ProjectWorkspace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Make sure this isn't too verbose.
         match self {
-            ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg } => f
+            ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg, rust_script_meta } => f
                 .debug_struct("Cargo")
                 .field("n_packages", &cargo.packages().len())
                 .field("n_sysroot_crates", &sysroot.crates().len())
@@ -101,20 +103,51 @@ impl ProjectWorkspace {
                 ProjectWorkspace::load_inline(project_json, config.target.as_deref())?
             }
             ProjectManifest::RustScript(script_file) => {
-                let file = fs::read_to_string(&script_file).with_context(|| {
-                    format!("Failed to read rust-script file {}", script_file.display())
-                })?;
+                let mut rust_script_cmd = Command::new("rust-script");
 
-                fn parse_rust_script(script_file: &str) -> Result<ProjectJsonData> {
-                    unimplemented!()
+                rust_script_cmd.arg(script_file.as_os_str());
+                rust_script_cmd.arg("--gen-pkg-only");
+                rust_script_cmd.arg("--print-metadata");
+                rust_script_cmd.arg("--symlink-script");
+
+                let stdout = utf8_stdout(rust_script_cmd)?;
+                let metadata_string = {
+                    let field = "metadata: ";
+                    stdout.lines().find_map(|l| l.strip_prefix(field)).with_context(|| {
+                        format!("rust-script did not output metadata, got:\n{}", stdout)
+                    })?
+                };
+
+                #[derive(Deserialize)]
+                struct RustScriptMetadataOutput {
+                    package_location: String,
                 }
 
-                let data = parse_rust_script(&file).with_context(|| {
-                    format!("Failed to parse .ers file {}", script_file.display())
+                let metadata: RustScriptMetadataOutput = serde_json::from_str(metadata_string)
+                    .with_context(|| format!("Failed to deserialize rust-script output"))?;
+
+                let abs_package_location = AbsPathBuf::try_from(PathBuf::from(
+                    metadata.package_location,
+                ))
+                .map_err(|path| {
+                    anyhow!(format!("rust-script returned a non-absolute path: {}", path.display()))
                 })?;
-                let project_location = script_file.parent().unwrap().to_path_buf();
-                let project_json = ProjectJson::new(&project_location, data);
-                ProjectWorkspace::load_inline(project_json, config.target.as_deref())?
+
+                let mut workspace = ProjectWorkspace::load(
+                    ProjectManifest::CargoToml(abs_package_location),
+                    config,
+                    progress,
+                )?;
+                let script_meta = RustScriptMeta { script_file };
+                match &mut workspace {
+                    &mut Self::Cargo { ref mut rust_script_meta, .. } => {
+                        *rust_script_meta = Some(script_meta);
+                    }
+                    _ => unreachable!(
+                        "ProjectManifest::CargoToml always results in a cargo workspace"
+                    ),
+                };
+                workspace
             }
             ProjectManifest::CargoToml(cargo_toml) => {
                 let cargo_version = utf8_stdout({
@@ -164,7 +197,7 @@ impl ProjectWorkspace {
                     None
                 };
                 let rustc_cfg = rustc_cfg::get(config.target.as_deref());
-                ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg }
+                ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg, rust_script_meta: None }
             }
         };
 
@@ -205,7 +238,13 @@ impl ProjectWorkspace {
                     })
                 }))
                 .collect::<Vec<_>>(),
-            ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg: _ } => cargo
+            ProjectWorkspace::Cargo {
+                cargo,
+                sysroot,
+                rustc,
+                rustc_cfg: _,
+                rust_script_meta: _,
+            } => cargo
                 .packages()
                 .map(|pkg| {
                     let is_member = cargo[pkg].is_member;
@@ -275,16 +314,21 @@ impl ProjectWorkspace {
                 project,
                 sysroot,
             ),
-            ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg } => cargo_to_crate_graph(
-                rustc_cfg.clone(),
-                &proc_macro_loader,
-                load,
-                cargo,
-                build_data.and_then(|it| it.get(cargo.workspace_root())),
-                sysroot,
-                rustc,
-                rustc.as_ref().zip(build_data).and_then(|(it, map)| map.get(it.workspace_root())),
-            ),
+            ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg, rust_script_meta: _ } => {
+                cargo_to_crate_graph(
+                    rustc_cfg.clone(),
+                    &proc_macro_loader,
+                    load,
+                    cargo,
+                    build_data.and_then(|it| it.get(cargo.workspace_root())),
+                    sysroot,
+                    rustc,
+                    rustc
+                        .as_ref()
+                        .zip(build_data)
+                        .and_then(|(it, map)| map.get(it.workspace_root())),
+                )
+            }
         };
         if crate_graph.patch_cfg_if() {
             log::debug!("Patched std to depend on cfg-if")

@@ -3,6 +3,7 @@
 mod cargo_workspace;
 mod cfg_flag;
 mod project_json;
+mod rust_script;
 mod sysroot;
 mod workspace;
 mod rustc_cfg;
@@ -25,6 +26,7 @@ pub use crate::{
         TargetData, TargetKind,
     },
     project_json::{ProjectJson, ProjectJsonData},
+    rust_script::RustScriptMeta,
     sysroot::Sysroot,
     workspace::{PackageRoot, ProjectWorkspace},
 };
