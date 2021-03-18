@@ -1,14 +1,7 @@
 //! FIXME: write short doc here
 
-use std::path::PathBuf;
-
-use base_db::{CrateDisplayName, CrateId, CrateName, Dependency, Edition};
 use lsp_types::Range;
-use paths::{AbsPath, AbsPathBuf};
-use rustc_hash::FxHashMap;
-use serde::{de, Deserialize};
-
-use crate::cfg_flag::CfgFlag;
+use paths::AbsPathBuf;
 
 /// Roots and crates that compose this Rust project.
 #[derive(Clone, Debug, Eq, PartialEq)]

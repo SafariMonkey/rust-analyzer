@@ -12,11 +12,11 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use base_db::{CrateDisplayName, CrateGraph, CrateId, CrateName, Edition, Env, FileId, ProcMacro};
 use cfg::CfgOptions;
-use lsp_types::Range;
+
 use paths::{AbsPath, AbsPathBuf};
 use proc_macro_api::ProcMacroClient;
 use rustc_hash::{FxHashMap, FxHashSet};
-use serde::{de, Deserialize};
+use serde::Deserialize;
 
 use crate::{
     build_data::{BuildData, BuildDataMap, BuildDataResult},
@@ -62,7 +62,7 @@ impl fmt::Debug for ProjectWorkspace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Make sure this isn't too verbose.
         match self {
-            ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg, rust_script_meta } => f
+            ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg, rust_script_meta: _ } => f
                 .debug_struct("Cargo")
                 .field("n_packages", &cargo.packages().len())
                 .field("n_sysroot_crates", &sysroot.crates().len())
