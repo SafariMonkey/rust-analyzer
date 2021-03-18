@@ -2,7 +2,6 @@
 //! requests/replies and notifications back to the client.
 use std::{
     env, fmt,
-    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -586,26 +585,8 @@ impl GlobalState {
                 Ok(())
             })?
             .on::<lsp_types::notification::DidChangeTextDocument>(|this, params| {
-                let mut document_uri = params.text_document.uri;
-                if let Ok(abs_path) = from_proto::abs_path(&document_uri) {
-                    if let Some((workspace, meta)) = this.get_rust_script_workspace(&abs_path) {
-                        if params.content_changes.iter().any(|change| {
-                            match (meta.manifest_span, change.range) {
-                                (None, _) => false,
-                                (_, None) => true,
-                                (Some(change_span), Some(mani_span)) => {
-                                    change_span.start.line >= mani_span.end.line
-                                }
-                            }
-                        }) {
-                            let mut interesting_files = (*this.interesting_files).clone();
-                            interesting_files.push(abs_path.clone());
-                            this.interesting_files = Arc::new(interesting_files);
-                        }
-                        document_uri = Url::from_file_path(abs_path)
-                            .map_err(|()| "file could not convert to URL")?;
-                    }
-                };
+                let mut document_uri = params.text_document.uri.clone();
+                this.rust_script_middleman(&mut document_uri, &params)?;
                 if let Ok(path) = from_proto::vfs_path(&document_uri) {
                     let doc = match this.mem_docs.get_mut(&path) {
                         Some(doc) => doc,
@@ -755,6 +736,31 @@ impl GlobalState {
                 Task::Diagnostics(diagnostics)
             })
         }
+    }
+    fn rust_script_middleman(
+        &mut self,
+        document_uri: &mut Url,
+        params: &lsp_types::DidChangeTextDocumentParams,
+    ) -> Result<(), String> {
+        if let Ok(abs_path) = from_proto::abs_path(&*document_uri) {
+            if let Some((_workspace, meta)) = self.get_rust_script_workspace(&abs_path) {
+                if params.content_changes.iter().any(|change| {
+                    match (meta.manifest_span, change.range) {
+                        (None, _) => false,
+                        (_, None) => true,
+                        (Some(change_span), Some(mani_span)) => {
+                            // TODO: proper change tracking?
+                            change_span.start.line >= mani_span.end.line
+                        }
+                    }
+                }) {
+                    self.interesting_files.push(abs_path.clone());
+                }
+                *document_uri =
+                    Url::from_file_path(abs_path).map_err(|()| "file could not convert to URL")?;
+            }
+        };
+        Ok(())
     }
     fn get_rust_script_workspace(
         &self,

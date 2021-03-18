@@ -70,7 +70,7 @@ impl GlobalState {
         fn is_interesting(
             path: &AbsPath,
             change_kind: ChangeKind,
-            interesting_files: &Arc<Vec<AbsPathBuf>>,
+            interesting_files: &Vec<AbsPathBuf>,
         ) -> bool {
             const IMPLICIT_TARGET_FILES: &[&str] = &["build.rs", "src/main.rs", "src/lib.rs"];
             const IMPLICIT_TARGET_DIRS: &[&str] = &["src/bin", "examples", "tests", "benches"];

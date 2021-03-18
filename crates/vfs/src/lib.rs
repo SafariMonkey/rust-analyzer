@@ -65,6 +65,7 @@ pub struct FileId(pub u32);
 #[derive(Default)]
 pub struct Vfs {
     interner: PathInterner,
+    // mappings: (ImHashMap<Url, Url>, ImHashMap<Url, Url>),
     data: Vec<Option<Vec<u8>>>,
     changes: Vec<ChangedFile>,
 }

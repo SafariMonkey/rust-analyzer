@@ -54,6 +54,7 @@ pub(crate) struct Handle<H, C> {
 
 pub(crate) type ReqHandler = fn(&mut GlobalState, lsp_server::Response);
 pub(crate) type ReqQueue = lsp_server::ReqQueue<(String, Instant), ReqHandler>;
+// pub(crate) type RustScriptMiddleware fn(&mut GlobalState, lsp_server::Response);
 
 /// `GlobalState` is the primary mutable state of the language server
 ///
@@ -82,7 +83,8 @@ pub(crate) struct GlobalState {
     pub(crate) source_root_config: SourceRootConfig,
     pub(crate) proc_macro_client: Option<ProcMacroClient>,
     pub(crate) workspaces: Arc<Vec<ProjectWorkspace>>,
-    pub(crate) interesting_files: Arc<Vec<AbsPathBuf>>,
+    pub(crate) interesting_files: Vec<AbsPathBuf>,
+    // pub(crate) rust_script_middlewares: FxHashMap<AbsPathBuf, RustScriptMiddleware>
     pub(crate) fetch_workspaces_queue: OpQueue<()>,
     pub(crate) workspace_build_data: Option<BuildDataResult>,
     pub(crate) fetch_build_data_queue: OpQueue<BuildDataCollector>,
@@ -139,7 +141,8 @@ impl GlobalState {
             source_root_config: SourceRootConfig::default(),
             proc_macro_client: None,
             workspaces: Arc::new(Vec::new()),
-            interesting_files: Arc::new(Vec::new()),
+            interesting_files: Vec::new(),
+            // path_mappings: FxHashMap::default(),
             fetch_workspaces_queue: OpQueue::default(),
             workspace_build_data: None,
             fetch_build_data_queue: OpQueue::default(),
