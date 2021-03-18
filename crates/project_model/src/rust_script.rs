@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use base_db::{CrateDisplayName, CrateId, CrateName, Dependency, Edition};
+use lsp_types::Range;
 use paths::{AbsPath, AbsPathBuf};
 use rustc_hash::FxHashMap;
 use serde::{de, Deserialize};
@@ -13,4 +14,5 @@ use crate::cfg_flag::CfgFlag;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RustScriptMeta {
     pub script_file: AbsPathBuf,
+    pub manifest_span: Option<Range>,
 }

@@ -846,6 +846,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lsp-types"
+version = "0.88.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8e8e042772e4e10b3785822f63c82399d0dd233825de44d2596f7fa86e023e0"
+dependencies = [
+ "bitflags",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "url",
+]
+
+[[package]]
 name = "matchers"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1199,6 +1212,7 @@ dependencies = [
  "itertools 0.10.0",
  "la-arena",
  "log",
+ "lsp-types 0.88.0",
  "paths",
  "proc_macro_api",
  "profile",
@@ -1338,7 +1352,7 @@ dependencies = [
  "jod-thread",
  "log",
  "lsp-server",
- "lsp-types",
+ "lsp-types 0.87.0",
  "mbe",
  "mimalloc",
  "oorandom",

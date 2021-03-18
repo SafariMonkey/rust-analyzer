@@ -12,6 +12,7 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use base_db::{CrateDisplayName, CrateGraph, CrateId, CrateName, Edition, Env, FileId, ProcMacro};
 use cfg::CfgOptions;
+use lsp_types::Range;
 use paths::{AbsPath, AbsPathBuf};
 use proc_macro_api::ProcMacroClient;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -119,26 +120,32 @@ impl ProjectWorkspace {
                 };
 
                 #[derive(Deserialize)]
-                struct RustScriptMetadataOutput {
-                    package_location: String,
+                struct OutputSpan {
+                    lsp_span: lsp_types::Range,
                 }
-
-                let metadata: RustScriptMetadataOutput = serde_json::from_str(metadata_string)
+                #[derive(Deserialize)]
+                struct Output {
+                    package_path: String,
+                    manifest_span: Option<OutputSpan>,
+                }
+                let metadata: Output = serde_json::from_str(metadata_string)
                     .with_context(|| format!("Failed to deserialize rust-script output"))?;
 
-                let abs_package_location = AbsPathBuf::try_from(PathBuf::from(
-                    metadata.package_location,
-                ))
-                .map_err(|path| {
-                    anyhow!(format!("rust-script returned a non-absolute path: {}", path.display()))
-                })?;
+                let abs_package_location =
+                    AbsPathBuf::try_from(PathBuf::from(metadata.package_path)).map_err(|path| {
+                        anyhow!(format!(
+                            "rust-script returned a non-absolute path: {}",
+                            path.display()
+                        ))
+                    })?;
+                let manifest_span = metadata.manifest_span.map(|s| s.lsp_span);
 
                 let mut workspace = ProjectWorkspace::load(
                     ProjectManifest::CargoToml(abs_package_location),
                     config,
                     progress,
                 )?;
-                let script_meta = RustScriptMeta { script_file };
+                let script_meta = RustScriptMeta { script_file, manifest_span };
                 match &mut workspace {
                     &mut Self::Cargo { ref mut rust_script_meta, .. } => {
                         *rust_script_meta = Some(script_meta);
