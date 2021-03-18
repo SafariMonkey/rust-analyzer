@@ -2,6 +2,7 @@
 //! requests/replies and notifications back to the client.
 use std::{
     env, fmt,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -25,6 +26,8 @@ use crate::{
     reload::{BuildDataProgress, ProjectWorkspaceProgress},
     Result,
 };
+
+use project_model::{ProjectWorkspace, RustScriptMeta};
 
 pub fn main_loop(config: Config, connection: Connection) -> Result<()> {
     log::info!("initial config: {:#?}", config);
@@ -582,6 +585,19 @@ impl GlobalState {
                 Ok(())
             })?
             .on::<lsp_types::notification::DidChangeTextDocument>(|this, params| {
+                if let Ok(abs_path) = from_proto::abs_path(&params.text_document.uri) {
+                    if this.workspaces.iter().any(|w| {
+                        matches!(w,
+                        ProjectWorkspace::Cargo {
+                            rust_script_meta: Some(RustScriptMeta { script_file, .. }),
+                            ..
+                        } if script_file == &abs_path)
+                    }) {
+                        let mut interesting_files = (*this.interesting_files).clone();
+                        interesting_files.push(abs_path);
+                        this.interesting_files = Arc::new(interesting_files);
+                    }
+                };
                 if let Ok(path) = from_proto::vfs_path(&params.text_document.uri) {
                     let doc = match this.mem_docs.get_mut(&path) {
                         Some(doc) => doc,

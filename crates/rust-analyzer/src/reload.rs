@@ -43,7 +43,8 @@ impl GlobalState {
         }
     }
     pub(crate) fn maybe_refresh(&mut self, changes: &[(AbsPathBuf, ChangeKind)]) {
-        if !changes.iter().any(|(path, kind)| is_interesting(path, *kind)) {
+        if !changes.iter().any(|(path, kind)| is_interesting(path, *kind, &self.interesting_files))
+        {
             return;
         }
         match self.status {
@@ -55,7 +56,7 @@ impl GlobalState {
             itertools::join(
                 changes
                     .iter()
-                    .filter(|(path, kind)| is_interesting(path, *kind))
+                    .filter(|(path, kind)| is_interesting(path, *kind, &self.interesting_files))
                     .map(|(path, kind)| format!("{}/{:?}", path.display(), kind)),
                 ", "
             )
@@ -66,11 +67,18 @@ impl GlobalState {
             self.transition(Status::NeedsReload);
         }
 
-        fn is_interesting(path: &AbsPath, change_kind: ChangeKind) -> bool {
+        fn is_interesting(
+            path: &AbsPath,
+            change_kind: ChangeKind,
+            interesting_files: &Arc<Vec<AbsPathBuf>>,
+        ) -> bool {
             const IMPLICIT_TARGET_FILES: &[&str] = &["build.rs", "src/main.rs", "src/lib.rs"];
             const IMPLICIT_TARGET_DIRS: &[&str] = &["src/bin", "examples", "tests", "benches"];
 
             if path.ends_with("Cargo.toml") || path.ends_with("Cargo.lock") {
+                return true;
+            }
+            if interesting_files.iter().any(|f| *path == **f) {
                 return true;
             }
             if change_kind == ChangeKind::Modify {

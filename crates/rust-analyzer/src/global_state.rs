@@ -15,7 +15,7 @@ use project_model::{
     BuildDataCollector, BuildDataResult, CargoWorkspace, ProcMacroClient, ProjectWorkspace, Target,
 };
 use rustc_hash::FxHashMap;
-use vfs::AnchoredPathBuf;
+use vfs::{AbsPathBuf, AnchoredPathBuf};
 
 use crate::{
     config::Config,
@@ -82,6 +82,7 @@ pub(crate) struct GlobalState {
     pub(crate) source_root_config: SourceRootConfig,
     pub(crate) proc_macro_client: Option<ProcMacroClient>,
     pub(crate) workspaces: Arc<Vec<ProjectWorkspace>>,
+    pub(crate) interesting_files: Arc<Vec<AbsPathBuf>>,
     pub(crate) fetch_workspaces_queue: OpQueue<()>,
     pub(crate) workspace_build_data: Option<BuildDataResult>,
     pub(crate) fetch_build_data_queue: OpQueue<BuildDataCollector>,
@@ -138,6 +139,7 @@ impl GlobalState {
             source_root_config: SourceRootConfig::default(),
             proc_macro_client: None,
             workspaces: Arc::new(Vec::new()),
+            interesting_files: Arc::new(Vec::new()),
             fetch_workspaces_queue: OpQueue::default(),
             workspace_build_data: None,
             fetch_build_data_queue: OpQueue::default(),
