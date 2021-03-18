@@ -12,7 +12,7 @@ use ide::PrimeCachesProgress;
 use ide::{Canceled, FileId};
 use ide_db::base_db::VfsPath;
 use lsp_server::{Connection, Notification, Request, Response};
-use lsp_types::notification::Notification as _;
+use lsp_types::{notification::Notification as _, Url};
 use vfs::ChangeKind;
 
 use crate::{
@@ -27,7 +27,8 @@ use crate::{
     Result,
 };
 
-use project_model::{ProjectWorkspace, RustScriptMeta};
+use project_model::{CargoWorkspace, ProjectWorkspace, RustScriptMeta};
+use vfs::AbsPath;
 
 pub fn main_loop(config: Config, connection: Connection) -> Result<()> {
     log::info!("initial config: {:#?}", config);
@@ -585,20 +586,27 @@ impl GlobalState {
                 Ok(())
             })?
             .on::<lsp_types::notification::DidChangeTextDocument>(|this, params| {
-                if let Ok(abs_path) = from_proto::abs_path(&params.text_document.uri) {
-                    if this.workspaces.iter().any(|w| {
-                        matches!(w,
-                        ProjectWorkspace::Cargo {
-                            rust_script_meta: Some(RustScriptMeta { script_file, .. }),
-                            ..
-                        } if script_file == &abs_path)
-                    }) {
-                        let mut interesting_files = (*this.interesting_files).clone();
-                        interesting_files.push(abs_path);
-                        this.interesting_files = Arc::new(interesting_files);
+                let mut document_uri = params.text_document.uri;
+                if let Ok(abs_path) = from_proto::abs_path(&document_uri) {
+                    if let Some((workspace, meta)) = this.get_rust_script_workspace(&abs_path) {
+                        if params.content_changes.iter().any(|change| {
+                            match (meta.manifest_span, change.range) {
+                                (None, _) => false,
+                                (_, None) => true,
+                                (Some(change_span), Some(mani_span)) => {
+                                    change_span.start.line >= mani_span.end.line
+                                }
+                            }
+                        }) {
+                            let mut interesting_files = (*this.interesting_files).clone();
+                            interesting_files.push(abs_path.clone());
+                            this.interesting_files = Arc::new(interesting_files);
+                        }
+                        document_uri = Url::from_file_path(abs_path)
+                            .map_err(|()| "file could not convert to URL")?;
                     }
                 };
-                if let Ok(path) = from_proto::vfs_path(&params.text_document.uri) {
+                if let Ok(path) = from_proto::vfs_path(&document_uri) {
                     let doc = match this.mem_docs.get_mut(&path) {
                         Some(doc) => doc,
                         None => {
@@ -747,5 +755,21 @@ impl GlobalState {
                 Task::Diagnostics(diagnostics)
             })
         }
+    }
+    fn get_rust_script_workspace(
+        &self,
+        abs_path: &AbsPath,
+    ) -> Option<(&CargoWorkspace, &RustScriptMeta)> {
+        self.workspaces
+            .iter()
+            .filter_map(|w| match w {
+                ProjectWorkspace::Cargo {
+                    cargo,
+                    rust_script_meta: Some(meta @ RustScriptMeta { .. }),
+                    ..
+                } if (&meta.script_file == abs_path) => Some((cargo, meta)),
+                _ => None,
+            })
+            .next()
     }
 }
