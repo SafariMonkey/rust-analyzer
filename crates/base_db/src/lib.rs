@@ -120,7 +120,6 @@ fn parse_query(db: &dyn SourceDatabase, file_id: FileId) -> Parse<ast::SourceFil
 pub trait SourceDatabaseExt: SourceDatabase {
     #[salsa::input]
     fn file_text(&self, file_id: FileId) -> Arc<String>;
-    /// Path to a file, relative to the root of its source root.
     /// Source root of the file.
     #[salsa::input]
     fn file_source_root(&self, file_id: FileId) -> SourceRootId;
