@@ -84,6 +84,9 @@ impl GlobalState {
             if change_kind == ChangeKind::Modify {
                 return false;
             }
+            if path.extension().unwrap_or_default() == "ers" {
+                return true;
+            }
             if path.extension().unwrap_or_default() != "rs" {
                 return false;
             }
@@ -261,7 +264,9 @@ impl GlobalState {
                         .flat_map(|it| it.to_roots(workspace_build_data.as_ref()))
                         .filter(|it| it.is_member)
                         .flat_map(|root| {
-                            root.include.into_iter().map(|it| format!("{}/**/*.rs", it.display()))
+                            root.include
+                                .into_iter()
+                                .map(|it| format!("{}/**/*.{{rs,ers}}", it.display()))
                         })
                         .map(|glob_pattern| lsp_types::FileSystemWatcher {
                             glob_pattern,

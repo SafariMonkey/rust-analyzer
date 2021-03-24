@@ -126,6 +126,11 @@ impl GlobalState {
                         lsp_types::DocumentFilter {
                             language: None,
                             scheme: None,
+                            pattern: Some("**/*.ers".into()),
+                        },
+                        lsp_types::DocumentFilter {
+                            language: None,
+                            scheme: None,
                             pattern: Some("**/Cargo.toml".into()),
                         },
                         lsp_types::DocumentFilter {
