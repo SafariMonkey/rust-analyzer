@@ -108,16 +108,10 @@ impl ProjectWorkspace {
 
                 rust_script_cmd.arg(script_file.as_os_str());
                 rust_script_cmd.arg("--gen-pkg-only");
-                rust_script_cmd.arg("--print-metadata");
-                rust_script_cmd.arg("--symlink-script");
+                rust_script_cmd.arg("--output-format");
+                rust_script_cmd.arg("metadata_json");
 
                 let stdout = utf8_stdout(rust_script_cmd)?;
-                let metadata_string = {
-                    let field = "metadata: ";
-                    stdout.lines().find_map(|l| l.strip_prefix(field)).with_context(|| {
-                        format!("rust-script did not output metadata, got:\n{}", stdout)
-                    })?
-                };
 
                 #[derive(Deserialize)]
                 struct OutputSpan {
@@ -128,7 +122,7 @@ impl ProjectWorkspace {
                     package_path: String,
                     manifest_span: Option<OutputSpan>,
                 }
-                let metadata: Output = serde_json::from_str(metadata_string)
+                let metadata: Output = serde_json::from_str(&stdout)
                     .with_context(|| format!("Failed to deserialize rust-script output"))?;
 
                 let abs_package_location =

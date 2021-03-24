@@ -68,8 +68,18 @@ impl ProjectManifest {
         if let Some(project_json) = find_in_parent_dirs(path, "rust-project.json") {
             return Ok(vec![ProjectManifest::ProjectJson(project_json)]);
         }
-        return find_cargo_toml(path)
-            .map(|paths| paths.into_iter().map(ProjectManifest::CargoToml).collect());
+        let cargo_tomls =
+            find_cargo_toml(path).map(|path| path.into_iter().map(ProjectManifest::CargoToml));
+        let rust_scripts = read_dir(path)
+            .map(find_rust_scripts)
+            .map(|path| path.into_iter().map(ProjectManifest::RustScript));
+
+        return match (cargo_tomls, rust_scripts) {
+            (Ok(cargo_tomls), Ok(rust_scripts)) => Ok(cargo_tomls.chain(rust_scripts).collect()),
+            (Ok(cargo_tomls), Err(_)) => Ok((cargo_tomls).collect()),
+            (Err(_), Ok(rust_scripts)) => Ok((rust_scripts).collect()),
+            (Err(cargo_toml_err), Err(_)) => Err(cargo_toml_err),
+        };
 
         fn find_cargo_toml(path: &AbsPath) -> io::Result<Vec<AbsPathBuf>> {
             match find_in_parent_dirs(path, "Cargo.toml") {
@@ -105,6 +115,39 @@ impl ProjectManifest {
                 .map(AbsPathBuf::assert)
                 .collect()
         }
+
+        fn find_rust_scripts(entities: ReadDir) -> Vec<AbsPathBuf> {
+            // Only one level down to avoid cycles the easy way and stop a runaway scan with large projects
+            entities
+                .filter_map(Result::ok)
+                .map(|it| it.path().join("Cargo.toml"))
+                .filter(|it| it.exists())
+                .map(AbsPathBuf::assert)
+                .filter_map(is_rust_script)
+                .collect()
+        }
+
+        fn is_rust_script(file_path: AbsPathBuf) -> Option<AbsPathBuf> {
+            if file_path.is_dir() {
+                return None;
+            }
+            let ext = file_path.extension().map(|ext| ext.to_str()).flatten();
+            if !matches!(ext, Some("ers") | Some("rs")) {
+                return None;
+            }
+            // read the shebang first, then the rest of the line
+            // to avoid reading #![...] as a shebang, check next character too
+            let mut file = File::open(&file_path).ok()?;
+            let mut shebang = [0u8; 3];
+            file.read_exact(&mut shebang).ok()?;
+            match shebang {
+                [b'#', b'!', next] if next == b'/' || char::from(next).is_ascii_whitespace() => {
+                    let first_line_minus_shebang = io::BufReader::new(file).lines().next()?.ok()?;
+                    first_line_minus_shebang.contains("rust-script").then(|| file_path)
+                }
+                _ => None,
+            }
+        }
     }
 
     pub fn discover_all(paths: &[impl AsRef<AbsPath>]) -> Vec<ProjectManifest> {
@@ -117,30 +160,6 @@ impl ProjectManifest {
             .collect::<Vec<_>>();
         res.sort();
         res
-    }
-
-    pub fn try_rust_script_from_file(file_path: AbsPathBuf) -> Option<ProjectManifest> {
-        if file_path.is_dir() {
-            return None;
-        }
-        let ext = file_path.extension().map(|ext| ext.to_str()).flatten();
-        if !matches!(ext, Some("ers") | Some("rs")) {
-            return None;
-        }
-        // read the shebang first, then the rest of the line
-        // to avoid reading #![...] as a shebang, check next character too
-        let mut file = File::open(&file_path).ok()?;
-        let mut shebang = [0u8; 3];
-        file.read_exact(&mut shebang).ok()?;
-        match shebang {
-            [b'#', b'!', next] if next == b'/' || char::from(next).is_ascii_whitespace() => {
-                let first_line_minus_shebang = io::BufReader::new(file).lines().next()?.ok()?;
-                first_line_minus_shebang
-                    .contains("rust-script")
-                    .then(|| ProjectManifest::RustScript(file_path))
-            }
-            _ => None,
-        }
     }
 }
 
