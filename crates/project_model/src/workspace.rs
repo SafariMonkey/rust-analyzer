@@ -135,7 +135,7 @@ impl ProjectWorkspace {
                 let manifest_span = metadata.manifest_span.map(|s| s.lsp_span);
 
                 let mut workspace = ProjectWorkspace::load(
-                    ProjectManifest::CargoToml(abs_package_location),
+                    ProjectManifest::CargoToml(abs_package_location.join("Cargo.toml")),
                     config,
                     progress,
                 )?;
@@ -315,7 +315,7 @@ impl ProjectWorkspace {
                 project,
                 sysroot,
             ),
-            ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg, rust_script_meta: _ } => {
+            ProjectWorkspace::Cargo { cargo, sysroot, rustc, rustc_cfg, rust_script_meta } => {
                 cargo_to_crate_graph(
                     rustc_cfg.clone(),
                     &proc_macro_loader,
@@ -323,6 +323,7 @@ impl ProjectWorkspace {
                     cargo,
                     build_data.and_then(|it| it.get(cargo.workspace_root())),
                     sysroot,
+                    rust_script_meta,
                     rustc,
                     rustc
                         .as_ref()
@@ -424,6 +425,7 @@ fn cargo_to_crate_graph(
     cargo: &CargoWorkspace,
     build_data_map: Option<&BuildDataMap>,
     sysroot: &Sysroot,
+    rust_script_meta: &Option<RustScriptMeta>,
     rustc: &Option<CargoWorkspace>,
     rustc_build_data_map: Option<&BuildDataMap>,
 ) -> CrateGraph {
@@ -447,7 +449,9 @@ fn cargo_to_crate_graph(
     for pkg in cargo.packages() {
         let mut lib_tgt = None;
         for &tgt in cargo[pkg].targets.iter() {
-            if let Some(file_id) = load(&cargo[tgt].root) {
+            let vfs_path =
+                rust_script_meta.as_ref().map(|m| &m.script_file).unwrap_or(&cargo[tgt].root);
+            if let Some(file_id) = load(vfs_path) {
                 let crate_id = add_target_crate_root(
                     &mut crate_graph,
                     &cargo[pkg],
